@@ -1,9 +1,11 @@
 function init (mapDivId) {
+    const orsToken = '5b3ce3597851110001cf6248b6254554dbfc488a8585d67081a4000f';
     let startMarker = null;
     let finishMarker = null;
     let clickPos = null;
     let map = null;
     let buttonPopup = null;
+    let route = null;
     const startIcon = L.icon ({
         iconUrl: 'res/start.png',
         iconSize: [25, 41],
@@ -17,6 +19,9 @@ function init (mapDivId) {
 
     const setBeginPoint = event => {
         if (clickPos) {
+            if (route)
+                route.remove ();
+
             if (startMarker) {
                 startMarker.setLatLng (clickPos);
             } else {            
@@ -30,6 +35,9 @@ function init (mapDivId) {
     };
     const setEndPoint = event => {
         if (clickPos) {
+            if (route)
+                route.remove ();
+                
             if (finishMarker) {
                 finishMarker.setLatLng (clickPos);
             } else {            
@@ -40,6 +48,53 @@ function init (mapDivId) {
 
         if (buttonPopup)
             map.closePopup (buttonPopup);
+    };
+    const requestRoute = () => {
+        if (!startMarker) {
+            alert ('Please specify where are you going to start from'); return;
+        }
+        if (!finishMarker) {
+            alert ('Please specify where are you going to start to'); return;
+        }
+
+        const startPos = startMarker.getLatLng ();
+        const finishPos = finishMarker.getLatLng ();
+        const buildPos = pos => { return `${pos.lng},${pos.lat}`; };
+
+        const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${orsToken}&start=${buildPos (startPos)}&end=${buildPos (finishPos)}`;
+
+        Request.fetchGet (url)
+        .then (response => {
+            if (response.ok) {
+                response.json ().then (data => {
+                    if (data.features && data.features.length > 0) {
+                        showRoute (data.features [0].geometry.coordinates);
+                        showSummary (data.features [0]);
+                    }
+                });
+            }
+        });
+    };
+    const showRoute = waypoints => {
+        if (route)
+            route.remove ();
+
+        route = L.polyline (waypoints.map (pos => {
+            return [pos[1], pos[0]];
+        }), { color: 'red', }).addTo (map);
+
+        map.fitBounds (route.getBounds ());
+
+        if (buttonPopup)
+            map.closePopup (buttonPopup);
+    };
+    const showSummary = data => {
+        const summary = data.properties.summary;
+        const distance = summary.distance * 0.001;
+        const duration = Math.round (summary.duration);
+        const durationHr = Math.round (duration / 100);
+        const durationMin = duration % 100;
+        alert (`Trip distance ${distance.toFixed (1)}; expected duration ${durationHr}:${Math.round (durationMin * 0.6)}`);
     };
 
     if (!mapDivId) mapDivId = "map";
@@ -81,6 +136,7 @@ function init (mapDivId) {
 
         document.getElementById ('setFrom').onclick = setBeginPoint;
         document.getElementById ('setTo').onclick = setEndPoint;
+        document.getElementById ('buildRoute').onclick = requestRoute;
 
         clickPos = event.latlng;
     });
